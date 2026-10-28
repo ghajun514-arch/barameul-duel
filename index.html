@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>바람결 결투장</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- 첫 화면 -->
+<section id="title" class="screen">
+  <div class="title-wrap">
+    <div class="title-copy">
+      <p class="eyebrow">1 대 1 · 온라인 결투</p>
+      <h1>바람결<br>결투장</h1>
+      <p class="lede">검객 둘과 궁수 하나. 친구와 방 코드를 나누고, 세 라운드를 먼저 따내면 이깁니다.</p>
+      <div class="roster" id="titleRoster"></div>
+    </div>
+    <form class="menu" id="menuForm" autocomplete="off">
+      <label for="nameInput">닉네임</label>
+      <input id="nameInput" maxlength="12" placeholder="예: 하준">
+      <button type="button" class="btn primary" id="btnCreate">방 만들기</button>
+      <div class="join-row">
+        <input id="codeInput" maxlength="4" placeholder="방 코드" aria-label="방 코드">
+        <button type="button" class="btn" id="btnJoin">참가</button>
+      </div>
+      <button type="button" class="btn ghost" id="btnPractice">혼자 연습하기</button>
+      <p class="err" id="menuErr" role="alert"></p>
+      <p class="hint">마우스와 키보드가 있는 PC에서 플레이하세요.</p>
+    </form>
+  </div>
+</section>
+
+<!-- 대기실 -->
+<section id="lobby" class="screen" hidden>
+  <header class="lobby-head">
+    <div>
+      <p class="eyebrow" id="lobbyKind">대기실</p>
+      <div class="code-line">
+        <span class="code-label">방 코드</span>
+        <strong id="roomCode" class="code">----</strong>
+        <button class="btn small" id="btnCopy" type="button">초대 링크 복사</button>
+      </div>
+      <p class="hint" id="copyNote">친구에게 코드를 알려주거나 링크를 보내세요.</p>
+    </div>
+    <button class="btn ghost small" id="btnLeave" type="button">나가기</button>
+  </header>
+
+  <div class="seats" id="seats"></div>
+
+  <h2 class="pick-title" id="pickTitle">내 챔피언 고르기</h2>
+  <div class="champ-grid" id="champGrid"></div>
+
+  <div class="bot-pick" id="botPick" hidden>
+    <h2 class="pick-title">연습 상대</h2>
+    <div class="bot-row" id="botRow"></div>
+    <p class="hint">연습 상대는 반격하지 않고 자리 근처를 걸어 다닙니다. 4초 동안 맞지 않으면 체력이 다시 찹니다.</p>
+  </div>
+
+  <div class="ready-bar">
+    <p id="readyNote" class="hint">두 사람 모두 준비하면 바로 시작합니다.</p>
+    <button class="btn primary big" id="btnReady" type="button">준비 완료</button>
+  </div>
+</section>
+
+<!-- 게임 -->
+<section id="game" class="screen" hidden>
+  <canvas id="view"></canvas>
+  <div id="hud">
+    <div class="scorebar" id="scorebar">
+      <div class="side left"><span class="pname" id="sbNameA"></span><span class="pips" id="sbPipsA"></span></div>
+      <div class="mid"><span id="sbRound">1 라운드</span></div>
+      <div class="side right"><span class="pips" id="sbPipsB"></span><span class="pname" id="sbNameB"></span></div>
+    </div>
+    <div class="banner" id="banner" hidden></div>
+
+    <div class="dock">
+      <div class="vitals">
+        <canvas id="portrait" width="128" height="128"></canvas>
+        <div class="bars">
+          <div class="bar hp"><i id="hpFill"></i><b id="shFill"></b><span id="hpText"></span></div>
+          <div class="bar res" id="resBar"><i id="resFill"></i><span id="resText"></span></div>
+        </div>
+      </div>
+      <div class="slots" id="slots"></div>
+    </div>
+
+    <canvas id="mini" width="252" height="162"></canvas>
+    <div class="keys" id="keys">
+      <b>우클릭</b> 이동·공격 <b>Q W E R</b> 스킬(마우스 방향) <b>F</b> 점멸 <b>S</b> 정지 <b>Esc</b> 메뉴
+    </div>
+    <div class="pause" id="pause" hidden>
+      <div class="pause-card">
+        <p>결투를 그만두고 대기실로 돌아갈까요?</p>
+        <div class="pause-btns">
+          <button class="btn" id="btnResume" type="button">계속하기</button>
+          <button class="btn danger" id="btnQuit" type="button">그만두기</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 결과 -->
+<div class="result" id="result" hidden>
+  <div class="result-card">
+    <p class="eyebrow">결투 종료</p>
+    <h2 id="resTitle">승리</h2>
+    <p class="res-score" id="resScore"></p>
+    <button class="btn primary" id="btnAgain" type="button">대기실로</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/art.js"></script>
+<script src="/client.js"></script>
+</body>
+</html>
