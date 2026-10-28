@@ -3,16 +3,20 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { Server } = require('socket.io');
-const { Game } = require('./game/sim');
+// 폴더(game/, public/)로 올려도, 파일을 한 곳에 모아 올려도 둘 다 동작
+const nested = fs.existsSync(path.join(__dirname, 'game', 'sim.js'));
+const { Game } = require(nested ? './game/sim' : './sim');
 
 const PORT = process.env.PORT || 3000;
-const PUB = path.join(__dirname, 'public');
+const PUB = fs.existsSync(path.join(__dirname, 'public', 'index.html')) ? path.join(__dirname, 'public') : __dirname;
+const PUBLIC_FILES = new Set(['/index.html', '/style.css', '/art.js', '/client.js']);
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent((req.url || '/').split('?')[0]);
   if (p === '/') p = '/index.html';
   if (p === '/health') { res.writeHead(200); res.end('ok'); return; }
+  if (!PUBLIC_FILES.has(p)) { res.writeHead(404); res.end('not found'); return; }
   const file = path.normalize(path.join(PUB, p));
   if (!file.startsWith(PUB)) { res.writeHead(403); res.end(); return; }
   fs.readFile(file, (err, data) => {
