@@ -7,15 +7,16 @@ const VISION = 1150;          // 챔피언 시야 반경
 const HAWK_VISION = 950;
 
 // 1대1용으로 '중반(11레벨, 코어 2개)' 수준으로 고정한 스탯
+// 영상 기준: 야스오·요네 치명타 확률 2배 + 치명타 피해 180%, 애쉬 치명타는 기댓값으로 고정 증폭
 const CHAMPS = {
-  wind:  { key: 'wind',  name: '질풍검객', hp: 1750, ad: 150, bonusAd: 75, as: 1.10, baseAs: 0.697, range: 175, armor: 72, mr: 46, ms: 345, crit: 0.5,  critMul: 1.575, ranged: false, radius: 34 },
-  soul:  { key: 'soul',  name: '망령검객', hp: 1720, ad: 148, bonusAd: 72, as: 1.08, baseAs: 0.625, range: 175, armor: 70, mr: 46, ms: 345, crit: 0.5,  critMul: 1.575, ranged: false, radius: 34 },
-  frost: { key: 'frost', name: '서리궁수', hp: 1600, ad: 152, bonusAd: 72, as: 1.05, baseAs: 0.658, range: 600, armor: 58, mr: 40, ms: 330, crit: 0.25, critMul: 1.75,  ranged: true,  radius: 32, mana: 700, manaRegen: 9 },
+  wind:  { key: 'wind',  name: '야스오', hp: 1750, ad: 150, bonusAd: 75, as: 1.10, baseAs: 0.697, range: 175, armor: 72, mr: 46, ms: 345, crit: 0.5,  critMul: 1.8,  ranged: false, radius: 34 },
+  soul:  { key: 'soul',  name: '요네',   hp: 1660, ad: 148, bonusAd: 72, as: 1.08, baseAs: 0.625, range: 175, armor: 70, mr: 46, ms: 345, crit: 0.5,  critMul: 1.8,  ranged: false, radius: 34 },
+  frost: { key: 'frost', name: '애쉬',   hp: 1700, ad: 155, bonusAd: 75, as: 1.12, baseAs: 0.658, range: 600, armor: 62, mr: 44, ms: 335, crit: 0.25, critMul: 1.75, ranged: true,  radius: 32, mana: 700, manaRegen: 9 },
 };
 const CD = {
   wind:  { Q: 4, W: 21, E: 0.5, R: 40, F: 60 },
   soul:  { Q: 4, W: 14, E: 16,  R: 60, F: 60 },
-  frost: { Q: 0, W: 11, E: 5,   R: 60, F: 60 },
+  frost: { Q: 0, W: 7.5, E: 5,  R: 60, F: 60 },
 };
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -55,7 +56,7 @@ class Game {
   // ───────────────────────── 생성 / 리셋
   makeChamp(slot, p) {
     const d = CHAMPS[p.champ] || CHAMPS.wind;
-    return { slot, key: d.key, d, name: p.name || d.name, bot: !!p.bot };
+    return { slot, key: d.key, d, name: p.name || d.name, bot: p.bot ? (p.bot === 'ai' ? 'ai' : 'dummy') : null };
   }
   spawnPoint(slot) {
     return { x: ARENA.w / 2 + (slot === 0 ? -700 : 700), y: ARENA.h / 2 };
@@ -70,7 +71,7 @@ class Game {
       airUntil: 0, airDur: 0, stunUntil: 0, stunDur: 0, slow: null, shields: [], unstoppableUntil: 0, ultUntil: 0,
       qStacks: 0, qStackUntil: 0, flow: 0, aaCount: 0, eStacks: 0, eStackUntil: 0, eLockUntil: 0,
       armorPenUntil: 0, asBuffUntil: 0, focus: 0, focusTick: 0, hawkCharges: 2, hawkRecharge: 0,
-      spirit: null, revealUntil: 0, lastHurt: -99, botNext: 0,
+      spirit: null, revealUntil: 0, lastHurt: -99, botNext: this.t + 0.6, vx: 0, vy: 0, seenX: null, seenY: null,
     });
   }
   startRound() {
@@ -152,7 +153,7 @@ class Game {
     } else if (type === 'magic') {
       a *= 100 / (100 + tgt.d.mr);
     }
-    // 질풍검객 패시브: 기류가 가득 차 있으면 챔피언에게 맞을 때 보호막
+    // 야스오 패시브: 기류가 가득 차 있으면 챔피언에게 맞을 때 보호막
     if (tgt.key === 'wind' && tgt.flow >= 1 && src && src !== tgt) {
       tgt.flow = 0;
       tgt.shields.push({ v: 450, until: this.t + 1 });
@@ -170,7 +171,7 @@ class Game {
     tgt.lastHurt = this.t;
     if (src && src !== tgt) {
       src.revealUntil = Math.max(src.revealUntil, this.t + 1.2);
-      // 망령검객 혼 이탈: 이탈 중에 준 피해를 쌓아둔다
+      // 요네 혼 이탈: 이탈 중에 준 피해를 쌓아둔다
       if (src.key === 'soul' && src.spirit && type !== 'true') src.spirit.store += a;
     }
     this.fx.push({ k: 'dmg', x: Math.round(tgt.x), y: Math.round(tgt.y), v: Math.round(a), ty: type, cr: !!opts.crit, s: tgt.slot });
@@ -220,12 +221,12 @@ class Game {
     if (c.dead) return;
     if (key === 'F') return this.flash(c, tx, ty);
 
-    // 망령검객: 혼 이탈 중 E 재사용 = 복귀
+    // 요네: 혼 이탈 중 E 재사용 = 복귀
     if (c.key === 'soul' && key === 'E' && c.spirit) {
       if (!this.isCC(c) && !c.dash && this.t - c.spirit.start > 0.4) this.soulReturn(c);
       return;
     }
-    // 질풍검객: 돌진 중 Q = 원형 베기(EQ)
+    // 야스오: 돌진 중 Q = 원형 베기(EQ)
     if (c.key === 'wind' && key === 'Q' && c.dash && c.dash.kind === 'windE') {
       if (c.cds.Q <= 0 && !c.dash.eq) { c.dash.eq = true; c.cds.Q = this.windQcd(c); }
       return;
@@ -254,10 +255,10 @@ class Game {
     if (c.dash) { c.dash.sx += mx; c.dash.sy += my; c.dash.ex += mx; c.dash.ey += my; }
     c.cds.F = CD[c.key].F;
     c.facing = Math.atan2(d.y, d.x);
-    this.fx.push({ k: 'flash', x1: Math.round(ox), y1: Math.round(oy), x2: Math.round(c.x), y2: Math.round(c.y) });
+    this.fx.push({ k: 'flash', s: c.slot, x1: Math.round(ox), y1: Math.round(oy), x2: Math.round(c.x), y2: Math.round(c.y) });
   }
 
-  // ───────────────────────── 질풍검객 도우미
+  // ───────────────────────── 야스오 도우미
   windQcd(c) { return Math.max(1.33, CD.wind.Q * (1 - this.qRed(c))); }
   windQdmg(c) {
     const cr = this.crit(c);
@@ -281,7 +282,7 @@ class Game {
     c.spirit = null;
     const e = this.enemy(c);
     if (s.store > 1 && e && !e.dead) {
-      this.deal(c, e, s.store * 0.3, 'true', { mark: true });
+      this.deal(c, e, s.store * 0.25, 'true', { mark: true });
       this.fx.push({ k: 'soulmark', x: Math.round(e.x), y: Math.round(e.y) });
     }
     c.cast = null; c.aaWind = null; c.attacking = false; c.moveT = null;
@@ -295,7 +296,7 @@ class Game {
   // ───────────────────────── 기본 공격
   doAttack(c, e) {
     if (c.d.ranged) {
-      // 서리궁수: 치명타는 피해 대신 기댓값으로 고정 증폭, 치명타 시 둔화 2배
+      // 애쉬: 치명타는 피해 대신 기댓값으로 고정 증폭, 치명타 시 둔화 2배
       const buffed = this.t < c.asBuffUntil;
       const base = c.d.ad * (1 + c.d.crit * (c.d.critMul - 1)) * (buffed ? 1.2 : 1);
       if (!buffed) { c.focus = Math.min(4, c.focus + 1); c.focusTick = this.t + 4; }
@@ -373,7 +374,8 @@ class Game {
       c.hawkRecharge -= dt;
       if (c.hawkRecharge <= 0) { c.hawkCharges++; c.hawkRecharge = c.hawkCharges < 2 ? 35 : 0; }
     }
-    if (c.bot) this.botThink(c);
+    if (c.bot === 'dummy') this.botThink(c);
+    else if (c.bot === 'ai') this.botFight(c);
 
     // 혼 이탈 시간 만료 → 복귀 (강한 군중 제어 중에는 연장)
     if (c.spirit && t >= c.spirit.until && !this.isCC(c) && !c.dash) this.soulReturn(c);
@@ -395,9 +397,11 @@ class Game {
       this.updateAttackMove(c, dt);
     }
 
-    // 질풍검객: 움직인 거리만큼 기류
+    // 야스오 패시브: 움직인 거리만큼 기류
     const moved = hyp(c.x - c.lx, c.y - c.ly);
     if (c.key === 'wind' && moved < 900) c.flow = Math.min(1, c.flow + moved / 2400);
+    // 속도(화면 예측과 컴퓨터 상대의 조준에 쓴다). 순간이동은 속도로 치지 않는다
+    if (moved < 60) { c.vx = (c.x - c.lx) / dt; c.vy = (c.y - c.ly) / dt; } else { c.vx = 0; c.vy = 0; }
     c.lx = c.x; c.ly = c.y;
   }
 
@@ -559,12 +563,12 @@ class Game {
     const died = [];
     for (const c of this.champs) {
       if (!c.dead && c.hp <= 0) {
-        // 망령검객이 혼 이탈 중에 쓰러져도 쌓인 피해는 터진다
+        // 요네이 혼 이탈 중에 쓰러져도 쌓인 피해는 터진다
         if (c.key === 'soul' && c.spirit) {
           const s = c.spirit; c.spirit = null;
           const e = this.enemy(c);
           if (s.store > 1 && e && !e.dead) {
-            this.deal(c, e, s.store * 0.3, 'true', { mark: true });
+            this.deal(c, e, s.store * 0.25, 'true', { mark: true });
             this.fx.push({ k: 'soulmark', x: Math.round(e.x), y: Math.round(e.y) });
           }
         }
@@ -603,6 +607,110 @@ class Game {
     }
   }
 
+  // ───────────────────────── 컴퓨터 상대(AI)
+  // 0.2~0.35초마다 한 번 판단한다. 사람처럼 반응 지연과 조준 오차가 있다.
+  aiTry(c, key, x, y) {
+    const before = [c.cds[key], c.cast, c.dash, c.spirit, c.asBuffUntil, c.hawkCharges, c.queued].join('|');
+    this.cast(c, key, x, y);
+    return before !== [c.cds[key], c.cast, c.dash, c.spirit, c.asBuffUntil, c.hawkCharges, c.queued].join('|');
+  }
+  aiLead(c, e, speed, windup = 0) {
+    const d = hyp(e.x - c.x, e.y - c.y);
+    const t = d / speed + windup;
+    const err = 0.6 + Math.random() * 0.5;   // 완벽하게 예측하지 않는다
+    return { x: e.x + e.vx * t * err, y: e.y + e.vy * t * err };
+  }
+  aiIncoming(c) {
+    // 나를 향해 날아오는 위험한 투사체가 있는지
+    for (const p of this.projs) {
+      if (p.owner === c.slot || p.homing !== undefined) continue;
+      const dx = c.x - p.x, dy = c.y - p.y, d = hyp(dx, dy);
+      if (d > 750) continue;
+      const along = (dx * Math.cos(p.ang) + dy * Math.sin(p.ang)) / (d || 1);
+      if (along > 0.9 && (p.kind === 'crystal' || p.kind === 'volley' || p.kind === 'tornado')) return p;
+    }
+    return null;
+  }
+  botFight(c) {
+    const t = this.t;
+    if (t < c.botNext) return;
+    c.botNext = t + 0.2 + Math.random() * 0.15;
+    const e = this.enemy(c);
+    if (!e || e.dead) { c.attacking = false; return; }
+    // 야스오는 돌진 중에도 Q를 넣어 EQ를 만든다
+    if (c.key === 'wind' && c.dash && c.dash.kind === 'windE' && c.cds.Q <= 0) { this.cast(c, 'Q', e.x, e.y); return; }
+    if (this.isCC(c) || c.cast || c.dash) return;
+
+    const vis = this.sees(c, e);
+    if (vis) { c.seenX = e.x; c.seenY = e.y; }
+    const d = hyp(e.x - c.x, e.y - c.y);
+    const gap = d - c.d.radius - e.d.radius;
+    const hpPct = c.hp / c.d.hp, eHp = e.hp / e.d.hp;
+
+    if (!vis) {
+      if (c.key === 'frost' && c.hawkCharges > 0 && c.cds.E <= 0 && c.seenX != null && Math.random() < 0.4) {
+        if (this.aiTry(c, 'E', c.seenX, c.seenY)) return;
+      }
+      c.attacking = false;
+      const tx = c.seenX != null ? c.seenX : ARENA.w / 2, ty = c.seenY != null ? c.seenY : ARENA.h / 2;
+      if (hyp(tx - c.x, ty - c.y) < 60) { c.seenX = null; c.seenY = null; }
+      c.moveT = { x: tx, y: ty };
+      return;
+    }
+
+    if (c.key === 'wind') {
+      if (this.canWindUlt(c) && this.aiTry(c, 'R', e.x, e.y)) return;
+      const inc = this.aiIncoming(c);
+      if (inc && c.cds.W <= 0 && this.aiTry(c, 'W', inc.x, inc.y)) return;
+      const eReady = t >= c.eLockUntil && c.cds.E <= 0 && gap <= 475;
+      if (eReady && (c.qStacks >= 2 ? c.cds.Q <= 0.1 : Math.random() < 0.45) && this.aiTry(c, 'E', e.x, e.y)) return;
+      if (c.cds.Q <= 0) {
+        if (c.qStacks >= 2 && d < 1000) { const p = this.aiLead(c, e, 1200, 0.2); if (this.aiTry(c, 'Q', p.x, p.y)) return; }
+        if (c.qStacks < 2 && d < 470 + e.d.radius) { const p = this.aiLead(c, e, 4000, 0.25); if (this.aiTry(c, 'Q', p.x, p.y)) return; }
+      }
+      c.attacking = true; c.moveT = null;
+      return;
+    }
+
+    if (c.key === 'soul') {
+      if (c.spirit) {
+        const left = c.spirit.until - t;
+        if ((hpPct < 0.3 || (eHp < 0.15 && c.spirit.store * 0.25 > e.hp)) && left < 4.4 && this.aiTry(c, 'E', c.x, c.y)) return;
+      }
+      if (c.cds.R <= 0 && d < 950 && (eHp < 0.55 || this.isAir(e) || Math.random() < 0.25)) {
+        const p = this.aiLead(c, e, 99999, 0.65);
+        if (this.aiTry(c, 'R', p.x, p.y)) return;
+      }
+      if (!c.spirit && c.cds.E <= 0 && d < 750 && d > 250 && Math.random() < 0.7 && this.aiTry(c, 'E', e.x, e.y)) return;
+      if (c.cds.W <= 0 && d < 580 && this.aiTry(c, 'W', e.x, e.y)) return;
+      if (c.cds.Q <= 0 && d < (c.qStacks >= 2 ? 480 : 470) + e.d.radius) {
+        const p = this.aiLead(c, e, 3000, 0.3);
+        if (this.aiTry(c, 'Q', p.x, p.y)) return;
+      }
+      c.attacking = true; c.moveT = null;
+      return;
+    }
+
+    // 애쉬: 거리를 벌리며 때린다
+    if (c.cds.R <= 0 && c.mana >= 100 && d < 1500 && (gap < 380 || eHp < 0.35 || Math.random() < 0.15)) {
+      const p = this.aiLead(c, e, 1700, 0.25);
+      if (this.aiTry(c, 'R', p.x, p.y)) return;
+    }
+    if (c.cds.W <= 0 && c.mana >= 60 && d < 1100) { const p = this.aiLead(c, e, 2000, 0.25); if (this.aiTry(c, 'W', p.x, p.y)) return; }
+    if (c.focus >= 4 && t >= c.asBuffUntil && c.mana >= 30 && this.aiTry(c, 'Q', e.x, e.y)) return;
+    const melee = !e.d.ranged;
+    if (melee && gap < 330 && !this.isCC(e) && !c.aaWind && c.aaCd > 0.25) {
+      // 공격 사이에 뒤로 빠진다(카이팅)
+      const ax = c.x - e.x, ay = c.y - e.y, l = hyp(ax, ay) || 1;
+      let mx = c.x + ax / l * 260, my = c.y + ay / l * 260;
+      if (mx < 120 || mx > ARENA.w - 120 || my < 120 || my > ARENA.h - 120) { mx = c.x - ay / l * 260; my = c.y + ax / l * 260; }
+      c.attacking = false;
+      c.moveT = { x: clamp(mx, 60, ARENA.w - 60), y: clamp(my, 60, ARENA.h - 60) };
+      return;
+    }
+    c.attacking = true; c.moveT = null;
+  }
+
   // ───────────────────────── 화면 전송용 상태
   champState(c, full) {
     const t = this.t;
@@ -620,7 +728,7 @@ class Game {
       qs: c.qStacks, fl: +c.flow.toFixed(2), fo: c.focus,
       buf: t < c.asBuffUntil ? +(c.asBuffUntil - t).toFixed(1) : 0,
       pen: t < c.armorPenUntil ? 1 : 0,
-      sp: c.spirit ? { bx: Math.round(c.spirit.bx), by: Math.round(c.spirit.by), r: +Math.max(0, c.spirit.until - t).toFixed(2), st: Math.round(c.spirit.store * 0.3) } : null,
+      sp: c.spirit ? { bx: Math.round(c.spirit.bx), by: Math.round(c.spirit.by), r: +Math.max(0, c.spirit.until - t).toFixed(2), st: Math.round(c.spirit.store * 0.25) } : null,
       uns: t < c.unstoppableUntil ? 1 : 0,
     };
     if (full) {
@@ -636,6 +744,12 @@ class Game {
       o.ur = c.key === 'wind' && this.canWindUlt(c) ? 1 : 0;
       o.el = c.key === 'wind' ? +Math.max(0, c.eLockUntil - t).toFixed(1) : 0;
       o.es = c.eStacks;
+      o.ms = Math.round(this.ms(c));
+      o.mt = c.moveT && !c.attacking ? [Math.round(c.moveT.x), Math.round(c.moveT.y)] : null;
+      o.at = c.attacking ? 1 : 0;
+      o.vx = Math.round(c.vx); o.vy = Math.round(c.vy);
+    } else {
+      o.vx = Math.round(c.vx); o.vy = Math.round(c.vy);
     }
     return o;
   }
@@ -664,7 +778,7 @@ class Game {
 // ───────────────────────── 스킬 정의
 const SKILLS = {
   wind: {
-    // Q 찌르기 바람: 2회 적중 후 세 번째는 회오리
+    // Q 강철 폭풍: 2회 적중 후 세 번째는 회오리
     Q(c, tx, ty) {
       const red = this.qRed(c);
       c.cds.Q = this.windQcd(c);
@@ -696,7 +810,7 @@ const SKILLS = {
         }
       }, { tornado });
     },
-    // W 바람 장벽: 4초간 적 투사체 소멸
+    // W 바람 장막: 4초간 적 투사체 소멸
     W(c, tx, ty) {
       const d = this.aimDir(c, tx, ty);
       c.facing = Math.atan2(d.y, d.x);
@@ -704,7 +818,7 @@ const SKILLS = {
       this.walls.push({ id: this.nextId++, owner: c.slot, ox: c.x, oy: c.y, dx: d.x, dy: d.y, half: 230, born: this.t, until: this.t + 4 });
       this.fx.push({ k: 'wallCast', s: c.slot });
     },
-    // E 돌파 베기: 적을 관통해 475 돌진
+    // E 질풍검: 적을 관통해 475 돌진, 쓸 때마다 다음 돌진 피해 25%씩(최대 100%)
     E(c, tx, ty) {
       const e = this.enemy(c);
       if (!e || e.dead || !this.sees(c, e)) return;
@@ -741,7 +855,7 @@ const SKILLS = {
       };
       this.fx.push({ k: 'dashE', s: c.slot });
     },
-    // R 마지막 바람: 공중에 뜬 적에게 순간이동
+    // R 최후의 숨결: 공중에 뜬 적에게 순간이동
     R(c) {
       if (!this.canWindUlt(c)) return;
       const e = this.enemy(c);
@@ -769,7 +883,7 @@ const SKILLS = {
   },
 
   soul: {
-    // Q 필살 찌르기: 세 번째는 돌진하며 띄우기
+    // Q 필멸의 검: 세 번째는 돌진하며 띄우기
     Q(c, tx, ty) {
       const red = this.qRed(c);
       c.cds.Q = Math.max(1.33, CD.soul.Q * (1 - red));
@@ -808,7 +922,7 @@ const SKILLS = {
         }
       }, { third });
     },
-    // W 혼 가르기: 부채꼴 최대 체력 비례 + 보호막
+    // W 영혼 가르기: 부채꼴 최대 체력 비례 + 1.5초 보호막
     W(c, tx, ty) {
       const red = this.qRed(c);
       c.cds.W = Math.max(6, CD.soul.W * (1 - red));
@@ -823,7 +937,7 @@ const SKILLS = {
         da = Math.atan2(Math.sin(da), Math.cos(da));
         const angTol = 0.7 + Math.atan2(e.d.radius, Math.max(dist, 1));
         if (dist <= 600 + e.d.radius && Math.abs(da) <= angTol) {
-          const total = 30 + 0.1 * e.d.hp;
+          const total = 30 + 0.085 * e.d.hp;
           this.deal(c2, e, total / 2, 'phys');
           this.deal(c2, e, total / 2, 'magic');
           c2.shields.push({ v: 2 * (65 + 0.65 * c2.d.bonusAd), until: this.t + 1.5 });
@@ -831,7 +945,7 @@ const SKILLS = {
         }
       });
     },
-    // E 혼 이탈: 5초간 영혼으로 싸우고 몸으로 돌아오며 30% 고정 피해
+    // E 영혼해방: 5초간 영혼으로 싸우고 몸으로 돌아오며 30% 고정 피해
     E(c, tx, ty) {
       const d = this.aimDir(c, tx, ty);
       c.facing = Math.atan2(d.y, d.x);
@@ -842,7 +956,7 @@ const SKILLS = {
       c.dash = { kind: 'soulE', sx: c.x, sy: c.y, ex: c.x + d.x * 300, ey: c.y + d.y * 300, t: 0, dur: 0.22 };
       this.fx.push({ k: 'soulOut', s: c.slot, x: Math.round(c.x), y: Math.round(c.y) });
     },
-    // R 봉인참: 직선 끝의 적 뒤로 순간이동하며 끌어당겨 띄우기
+    // R 운명봉인: 직선 끝의 적 뒤로 순간이동하며 끌어당겨 띄우기
     R(c, tx, ty) {
       const d = this.aimDir(c, tx, ty);
       c.facing = Math.atan2(d.y, d.x);
@@ -873,7 +987,7 @@ const SKILLS = {
   },
 
   frost: {
-    // Q 연사 집중: 기본 공격 4회 후 사용, 6초간 다섯 발씩
+    // Q 궁사의 집중: 기본 공격 4회 후 사용, 6초간 다섯 발씩
     Q(c) {
       if (c.focus < 4 || c.mana < 30) return;
       c.mana -= 30;
@@ -883,7 +997,7 @@ const SKILLS = {
       c.aaWind = null;
       this.fx.push({ k: 'focus', s: c.slot });
     },
-    // W 부채 사격: 9발, 대상당 한 번만 피해
+    // W 일제 사격: 대상당 한 번만 피해, 치명타 판정이라 둔화 2배
     W(c, tx, ty) {
       if (c.mana < 60) return;
       c.mana -= 60;
@@ -892,8 +1006,9 @@ const SKILLS = {
         const d = this.aimDir(c2, tx, ty);
         c2.facing = Math.atan2(d.y, d.x);
         const volley = { hit: false };
-        for (let i = 0; i < 9; i++) {
-          const ang = c2.facing + (i - 4) * (0.87 / 8);
+        // 영상 기준 최대 11발, 부채꼴 약 57도
+        for (let i = 0; i < 11; i++) {
+          const ang = c2.facing + (i - 5) * (1.0 / 10);
           this.projs.push({
             id: this.nextId++, kind: 'volley', owner: c2.slot, x: c2.x, y: c2.y, ang, speed: 2000, range: 1200,
             width: 26, dist: 0, hit: new Set(),
@@ -905,10 +1020,10 @@ const SKILLS = {
             },
           });
         }
-        this.fx.push({ k: 'shoot', s: c2.slot });
+        this.fx.push({ k: 'volley', s: c2.slot });
       });
     },
-    // E 정찰 매: 경로와 도착 지점 시야
+    // E 매 날리기: 경로와 도착 지점 시야
     E(c, tx, ty) {
       if (c.hawkCharges <= 0) return;
       if (c.hawkCharges === 2) c.hawkRecharge = 35;
@@ -917,7 +1032,7 @@ const SKILLS = {
       this.hawks.push({ id: this.nextId++, owner: c.slot, x: c.x, y: c.y, tx: clamp(tx, 0, ARENA.w), ty: clamp(ty, 0, ARENA.h), arrived: false, until: 0 });
       this.fx.push({ k: 'hawk', s: c.slot });
     },
-    // R 얼음 수정 화살: 멀리 날아갈수록 긴 기절
+    // R 마법의 수정화살: 멀리 날아갈수록 긴 기절(1~3.5초)
     R(c, tx, ty) {
       if (c.mana < 100) return;
       c.mana -= 100;

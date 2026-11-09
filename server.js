@@ -27,7 +27,7 @@ const server = http.createServer((req, res) => {
   });
 });
 
-const io = new Server(server, { pingInterval: 4000, pingTimeout: 10000 });
+const io = new Server(server, { pingInterval: 3000, pingTimeout: 6000 });
 const rooms = new Map();      // code → room
 const sessions = new Map();   // token → { code }
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -36,6 +36,9 @@ const TICK = 1 / 60;
 const SNAP = 1 / 30;
 const GRACE_GAME = 25;        // 게임 중 끊겼을 때 기다리는 시간(초)
 const GRACE_LOBBY = 8;
+// 테스트용: FAKE_LAG_MS=100 으로 켜면 왕복 지연을 흉내 낸다
+const LAG = Number(process.env.FAKE_LAG_MS || 0);
+const later = fn => (LAG ? setTimeout(fn, LAG / 2) : fn());
 
 function makeCode() {
   for (;;) {
@@ -104,7 +107,8 @@ function startGame(room) {
         if (!p.socket) return;
         const s = g.snapshot(i, fx);
         s.pz = paused ? 1 : 0;
-        p.socket.emit('snap', s);
+        const sock = p.socket;
+        later(() => sock.emit('snap', s));
       });
       if (g.phase === 'over') endGame(room, true);
     }
@@ -153,7 +157,7 @@ io.on('connection', socket => {
   socket.data.token = null;
   let winStart = 0, winCount = 0;
 
-  socket.on('png', (_, ack) => { if (typeof ack === 'function') ack(); });
+  socket.on('png', (_, ack) => { if (typeof ack === 'function') later(() => later(ack)); });
 
   socket.on('rejoin', ({ token } = {}) => {
     const s = sessions.get(String(token || ''));
@@ -238,7 +242,7 @@ io.on('connection', socket => {
     const room = rooms.get(socket.data.room);
     if (!room || !room.game) return;
     const slot = room.players.findIndex(p => p.token === socket.data.token);
-    if (slot >= 0) room.game.input(slot, m);
+    if (slot >= 0) later(() => { if (room.game) room.game.input(slot, m); });
   });
 
   socket.on('quit', () => {

@@ -17,7 +17,7 @@
     <div class="title-copy">
       <p class="eyebrow">1 대 1 · 온라인 결투</p>
       <h1>바람결<br>결투장</h1>
-      <p class="lede">검객 둘과 궁수 하나. 친구와 방 코드를 나누고, 세 라운드를 먼저 따내면 이깁니다.</p>
+      <p class="lede">야스오, 요네, 애쉬 중 하나를 골라 친구와 붙어요. 방 코드를 나누고, 세 라운드를 먼저 따내면 이깁니다.</p>
       <div class="roster" id="titleRoster"></div>
     </div>
     <form class="menu" id="menuForm" autocomplete="off">
@@ -30,7 +30,7 @@
       </div>
       <button type="button" class="btn ghost" id="btnPractice">혼자 연습하기</button>
       <p class="err" id="menuErr" role="alert"></p>
-      <p class="hint">마우스와 키보드가 있는 PC에서 플레이하세요.</p>
+      <p class="hint" id="connState">서버에 연결하는 중…</p>
     </form>
   </div>
 </section>
@@ -41,7 +41,7 @@
     <div>
       <p class="eyebrow" id="lobbyKind">대기실</p>
       <div class="code-line">
-        <span class="code-label">방 코드</span>
+        <span class="code-label" id="codeLabel">방 코드</span>
         <strong id="roomCode" class="code">----</strong>
         <button class="btn small" id="btnCopy" type="button">초대 링크 복사</button>
       </div>
@@ -52,13 +52,19 @@
 
   <div class="seats" id="seats"></div>
 
-  <h2 class="pick-title" id="pickTitle">내 챔피언 고르기</h2>
+  <h2 class="pick-title">내 챔피언 고르기</h2>
   <div class="champ-grid" id="champGrid"></div>
 
   <div class="bot-pick" id="botPick" hidden>
     <h2 class="pick-title">연습 상대</h2>
-    <div class="bot-row" id="botRow"></div>
-    <p class="hint">연습 상대는 반격하지 않고 자리 근처를 걸어 다닙니다. 4초 동안 맞지 않으면 체력이 다시 찹니다.</p>
+    <div class="bot-rows">
+      <div class="seg" id="botMode" role="group" aria-label="연습 방식">
+        <button type="button" class="btn small" data-mode="dummy">허수아비 (맞기만 함)</button>
+        <button type="button" class="btn small" data-mode="ai">컴퓨터와 대전</button>
+      </div>
+      <div class="seg" id="botRow" role="group" aria-label="상대 챔피언"></div>
+    </div>
+    <p class="hint" id="botNote"></p>
   </div>
 
   <div class="ready-bar">
@@ -75,8 +81,11 @@
       <div class="side left"><span class="pname" id="sbNameA"></span><span class="pips" id="sbPipsA"></span></div>
       <div class="mid"><span id="sbRound">1 라운드</span></div>
       <div class="side right"><span class="pips" id="sbPipsB"></span><span class="pname" id="sbNameB"></span></div>
+      <div class="foe-hp" id="foeHp"><i id="foeHpFill"></i></div>
     </div>
+    <div class="netinfo" id="netinfo"><span id="pingText">핑 -</span><button type="button" class="mute" id="btnMute" title="소리 켜기/끄기 (M)">소리</button></div>
     <div class="banner" id="banner" hidden></div>
+    <div class="waiting" id="waiting" hidden>상대 연결을 기다리는 중… 게임이 멈춰 있어요.</div>
 
     <div class="dock">
       <div class="vitals">
@@ -84,14 +93,16 @@
         <div class="bars">
           <div class="bar hp"><i id="hpFill"></i><b id="shFill"></b><span id="hpText"></span></div>
           <div class="bar res" id="resBar"><i id="resFill"></i><span id="resText"></span></div>
+          <div class="buffs" id="buffs"></div>
         </div>
       </div>
       <div class="slots" id="slots"></div>
     </div>
+    <div class="tip" id="tip" hidden></div>
 
     <canvas id="mini" width="252" height="162"></canvas>
     <div class="keys" id="keys">
-      <b>우클릭</b> 이동·공격 <b>Q W E R</b> 스킬(마우스 방향) <b>F</b> 점멸 <b>S</b> 정지 <b>Esc</b> 메뉴
+      <b>우클릭/좌클릭</b> 이동 · 적 클릭은 공격<br><b>Q W E R</b> 스킬(마우스 방향) <b>D/F</b> 점멸<br><b>S</b> 정지 <b>M</b> 소리 <b>Tab</b> 안내 숨기기 <b>Esc</b> 메뉴
     </div>
     <div class="pause" id="pause" hidden>
       <div class="pause-card">
@@ -118,6 +129,7 @@
 <div class="toast" id="toast" hidden></div>
 
 <script src="/socket.io/socket.io.js"></script>
+<script src="/sound.js"></script>
 <script src="/art.js"></script>
 <script src="/client.js"></script>
 </body>
